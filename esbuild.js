@@ -14,6 +14,15 @@ const buildOptions = {
   sourcemap: true,
   minify: false,
   logLevel: "info",
+  // esbuild's CJS output leaves `import.meta.url` undefined, but a bundled
+  // dependency (the Agent SDK's HTTP stack) calls createRequire(import.meta.url)
+  // purely to require() Node built-ins — any valid file URL works as the base.
+  define: {
+    "import.meta.url": "specguardImportMetaUrl",
+  },
+  banner: {
+    js: "const specguardImportMetaUrl = require('url').pathToFileURL(__filename).href;",
+  },
 };
 
 async function main() {
