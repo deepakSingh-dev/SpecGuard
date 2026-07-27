@@ -1,0 +1,43 @@
+{
+  "name": "specguard",
+  "displayName": "SpecGuard",
+  "description": "Turns a plain-English spec into typed, EARS-formatted constraints, hands code generation to your own agent, then generates and runs one test per constraint in an isolated git worktree and scores the result 0-100.",
+  "version": "0.0.1",
+  "publisher": "specguard",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:specguard.run"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "specguard.run",
+        "title": "SpecGuard: Run Pipeline"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "test": "vitest run",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.4.0",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "dependencies": {
+    "zod": "^3.23.0"
+  }
+}
