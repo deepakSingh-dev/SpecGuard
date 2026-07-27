@@ -1,8 +1,11 @@
 import * as vscode from "vscode";
+import { loadSettings, scoringProviderWarning } from "./config";
 import { SpecRequest, type PipelineState } from "./models";
 import type { PipelineContext } from "./pipeline/context";
 import { runPipeline } from "./pipeline/orchestrator";
-import { createDefaultRegistry } from "./providers/registry";
+import { ClaudeAgentProvider } from "./providers/claudeAgentProvider";
+import { FakeProvider } from "./providers/fakeProvider";
+import { ProviderRegistry } from "./providers/registry";
 import { reviewConstraints } from "./ui/constraintReview";
 import { showScoreDashboard } from "./ui/scoreDashboard";
 import { PipelineTreeProvider } from "./ui/treeView";
@@ -53,19 +56,26 @@ async function runSpecGuardPipeline(treeProvider: PipelineTreeProvider): Promise
     return;
   }
 
-  const config = vscode.workspace.getConfiguration("specguard");
-  const minScore = config.get<number>("gate.minScore", 75);
+  const settings = loadSettings();
+
+  const warning = scoringProviderWarning(settings);
+  if (warning) {
+    const choice = await vscode.window.showWarningMessage(`SpecGuard: ${warning}`, "Run Anyway", "Cancel");
+    if (choice !== "Run Anyway") {
+      return;
+    }
+  }
+
+  const registry = new ProviderRegistry();
+  registry.register(new FakeProvider());
+  registry.register(new ClaudeAgentProvider({ model: settings.claudeAgentSdk.model }));
+
   const ctx: PipelineContext = {
-    registry: createDefaultRegistry(),
+    registry,
     settings: {
-      providers: {
-        constraintExtraction: config.get<string>("providers.constraintExtraction", "fake"),
-        codeGeneration: config.get<string>("providers.codeGeneration", "fake"),
-        testGeneration: config.get<string>("providers.testGeneration", "fake"),
-        scoring: config.get<string>("providers.scoring", "fake"),
-      },
-      gate: { minScore },
-      testFramework: config.get<"auto" | "vitest" | "pytest">("testFramework", "auto"),
+      providers: settings.providers,
+      gate: settings.gate,
+      testFramework: settings.testFramework,
     },
   };
 
@@ -89,7 +99,7 @@ async function runSpecGuardPipeline(treeProvider: PipelineTreeProvider): Promise
       });
 
       finalizeTreeStatus(treeProvider, result);
-      showScoreDashboard(result, minScore);
+      showScoreDashboard(result, settings.gate.minScore);
 
       if (result.status === "complete") {
         vscode.window.showInformationMessage(

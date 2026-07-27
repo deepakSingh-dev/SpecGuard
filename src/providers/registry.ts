@@ -1,6 +1,4 @@
 import type { Provider } from "./provider";
-import { ClaudeAgentProvider } from "./claudeAgentProvider";
-import { FakeProvider } from "./fakeProvider";
 
 /**
  * Resolves a provider id (as configured in settings) to a concrete Provider
@@ -26,12 +24,4 @@ export class ProviderRegistry {
   has(id: string): boolean {
     return this.providers.has(id);
   }
-}
-
-/** Registry pre-populated with the built-in providers (fake + Claude Agent SDK). */
-export function createDefaultRegistry(): ProviderRegistry {
-  const registry = new ProviderRegistry();
-  registry.register(new FakeProvider());
-  registry.register(new ClaudeAgentProvider());
-  return registry;
 }
