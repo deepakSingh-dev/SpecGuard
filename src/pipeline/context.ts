@@ -11,6 +11,7 @@ export interface PipelineSettings {
     minScore: number;
   };
   testFramework: "auto" | "vitest" | "pytest";
+  testTimeoutMs?: number;
 }
 
 /**
