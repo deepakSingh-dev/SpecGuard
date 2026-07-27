@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { access, copyFile, lstat, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -76,4 +76,60 @@ export async function writeWorktreeFile(
   await mkdir(path.dirname(fullPath), { recursive: true });
   await writeFile(fullPath, content, "utf8");
   return fullPath;
+}
+
+interface StatusEntry {
+  path: string;
+  deleted: boolean;
+}
+
+function parsePorcelainStatus(output: string): StatusEntry[] {
+  const entries: StatusEntry[] = [];
+  for (const rawLine of output.split("\n")) {
+    if (!rawLine.trim()) continue;
+    const statusCode = rawLine.slice(0, 2);
+    const rest = rawLine.slice(3);
+    if (statusCode.includes("R") || statusCode.includes("C")) {
+      const to = rest.split(" -> ")[1];
+      if (to) entries.push({ path: to.trim(), deleted: false });
+    } else if (rest.trim()) {
+      entries.push({ path: rest.trim(), deleted: statusCode.includes("D") });
+    }
+  }
+  return entries;
+}
+
+/**
+ * Copies every changed/untracked file from the worktree's working tree into
+ * the real workspace at the same relative path. Called only after the
+ * quality gate passes. Returns the list of promoted relative paths.
+ */
+export async function promoteWorktree(worktreePath: string, repoRoot: string): Promise<string[]> {
+  const { stdout } = await git(worktreePath, ["status", "--porcelain"]);
+  const entries = parsePorcelainStatus(stdout);
+
+  const promoted: string[] = [];
+  for (const entry of entries) {
+    const from = path.join(worktreePath, entry.path);
+    const to = path.join(repoRoot, entry.path);
+
+    if (entry.deleted) {
+      await rm(to, { force: true });
+      promoted.push(entry.path);
+      continue;
+    }
+
+    const stats = await lstat(from).catch(() => null);
+    if (!stats || !stats.isFile()) {
+      // Only regular files are promoted; directories/symlinks (e.g. an
+      // accidentally-untracked node_modules) are not generated output.
+      continue;
+    }
+
+    await mkdir(path.dirname(to), { recursive: true });
+    await copyFile(from, to);
+    promoted.push(entry.path);
+  }
+
+  return promoted;
 }
