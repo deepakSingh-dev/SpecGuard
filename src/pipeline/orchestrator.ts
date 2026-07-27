@@ -10,6 +10,7 @@ import { runTests } from "./runTests";
 import { scoreQuality } from "./scoreQuality";
 
 export type ConstraintApprovalHook = (state: PipelineState) => Promise<PipelineState>;
+export type StatusChangeHook = (state: PipelineState) => void;
 
 export interface OrchestratorOptions {
   repoRoot: string;
@@ -17,9 +18,12 @@ export interface OrchestratorOptions {
   onConstraintApproval?: ConstraintApprovalHook;
   /** Whether to remove the worktree after a successful, promoted run. Defaults to true. */
   teardownWorktreeOnSuccess?: boolean;
+  /** Called after every status transition, letting UI surfaces show live progress. */
+  onStatusChange?: StatusChangeHook;
 }
 
 const autoApprove: ConstraintApprovalHook = async (state) => state;
+const noopStatusChange: StatusChangeHook = () => {};
 
 function initState(specRequest: SpecRequest): PipelineState {
   return {
@@ -48,22 +52,28 @@ export async function runPipeline(
 ): Promise<PipelineState> {
   const onConstraintApproval = options.onConstraintApproval ?? autoApprove;
   const teardownOnSuccess = options.teardownWorktreeOnSuccess ?? true;
+  const onStatusChange = options.onStatusChange ?? noopStatusChange;
 
   let state = initState(specRequest);
 
+  const setStatus = (status: PipelineState["status"]) => {
+    state = { ...state, status };
+    onStatusChange(state);
+  };
+
   try {
     state.worktreePath = await createWorktree(options.repoRoot);
-    state.status = "validating";
+    setStatus("validating");
 
     state = await extractConstraints(state, ctx);
     state = await onConstraintApproval(state);
 
     for (let attempt = 0; attempt <= state.maxRetries; attempt++) {
-      state.status = "generating_tests";
+      setStatus("generating_tests");
       state = await generateCode(state, ctx);
       state = await generateTests(state, ctx);
 
-      state.status = "running_tests";
+      setStatus("running_tests");
       state = await runTests(state, ctx);
 
       if (allTestsPassed(state)) {
@@ -74,7 +84,7 @@ export async function runPipeline(
       }
     }
 
-    state.status = "scoring";
+    setStatus("scoring");
     state = await scoreQuality(state, ctx);
 
     const gateResult = applyGate(
@@ -88,22 +98,22 @@ export async function runPipeline(
       if (state.worktreePath) {
         await promoteWorktree(state.worktreePath, options.repoRoot);
       }
-      state.status = "complete";
       state.error = null;
       if (teardownOnSuccess && state.worktreePath) {
         await teardownWorktree(state.worktreePath);
         state.worktreePath = null;
       }
+      setStatus("complete");
     } else {
-      state.status = "failed";
       state.error = gateResult.reasons.join(" ");
       // Worktree is intentionally left in place for inspection.
+      setStatus("failed");
     }
 
     return state;
   } catch (err) {
-    state.status = "failed";
-    state.error = err instanceof Error ? err.message : String(err);
+    state = { ...state, error: err instanceof Error ? err.message : String(err) };
+    setStatus("failed");
     return state;
   }
 }

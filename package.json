@@ -12,7 +12,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:specguard.run"
+    "onCommand:specguard.run",
+    "onView:specguard.pipeline"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -21,7 +22,62 @@
         "command": "specguard.run",
         "title": "SpecGuard: Run Pipeline"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "specguard",
+          "title": "SpecGuard",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "specguard": [
+        {
+          "id": "specguard.pipeline",
+          "name": "Pipeline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "SpecGuard",
+      "properties": {
+        "specguard.providers.constraintExtraction": {
+          "type": "string",
+          "default": "fake",
+          "description": "Provider id used to extract and classify EARS constraints from the spec."
+        },
+        "specguard.providers.codeGeneration": {
+          "type": "string",
+          "default": "fake",
+          "description": "Provider id used to generate code that satisfies the approved constraints."
+        },
+        "specguard.providers.testGeneration": {
+          "type": "string",
+          "default": "fake",
+          "description": "Provider id used to generate one test per constraint."
+        },
+        "specguard.providers.scoring": {
+          "type": "string",
+          "default": "fake",
+          "description": "Provider id used to score generated code quality. Can differ from the code-generation provider."
+        },
+        "specguard.gate.minScore": {
+          "type": "number",
+          "default": 75,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Minimum overall quality score (0-100) required to pass the quality gate."
+        },
+        "specguard.testFramework": {
+          "type": "string",
+          "enum": ["auto", "vitest", "pytest"],
+          "default": "auto",
+          "description": "Test framework to run generated tests with. \"auto\" detects it from the target project."
+        }
+      }
+    }
   },
   "scripts": {
     "compile": "node esbuild.js",
