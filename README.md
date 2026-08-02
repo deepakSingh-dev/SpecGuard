@@ -1,71 +1,82 @@
+<div align="center">
+
 # SpecGuard
 
-SpecGuard is a VSCode extension that turns a plain-English spec into typed,
-EARS-formatted constraints, hands code generation off to your own coding
-agent, then generates and runs one test per constraint in an isolated git
-worktree and scores the result 0-100 — blocking a task as "done" until it
-passes a quality gate.
+**Guardrails for AI-generated code.**
 
-## The pipeline
+Turn a plain-English spec into typed, EARS-formatted constraints, hand code
+generation to your own coding agent, then generate and run one test per
+constraint in an isolated git worktree — and score the result 0–100 before
+it's allowed anywhere near your real workspace.
 
-1. **Extract constraints.** You describe what you want in plain English.
-   A reasoning provider extracts discrete, testable constraints and
-   classifies each one into an [EARS](#ears-constraints) pattern.
-2. **Review & approve.** Every constraint is shown in a webview — EARS text,
-   type, severity, description — and is editable. Nothing generates until
-   you click Approve.
-3. **Generate code.** A coding agent (bring-your-own-agent, see below) is
-   handed the approved constraints and writes an implementation inside an
-   isolated git worktree, never touching your real working tree directly.
+[![Version](https://img.shields.io/badge/version-0.0.1-blue)](package.json)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-informational)](LICENSE)
+[![Status](https://img.shields.io/badge/status-early%20preview-orange)](#)
+
+[Quick start](#quick-start) · [How it works](#how-it-works) · [Features](#features) · [Settings](#settings-reference) · [Roadmap](#deferred-to-v2)
+
+</div>
+
+---
+
+## Why
+
+AI coding agents move fast, but "looks done" isn't the same as "does what
+was asked." SpecGuard sits between your spec and your codebase: it makes
+requirements explicit and testable, keeps generation off your real working
+tree until it's proven, and won't call a task complete until an
+independently-scored quality gate says so.
+
+## How it works
+
+```mermaid
+flowchart TD
+    A["1. Extract constraints\nplain English → EARS-classified"] --> B["2. Review & approve\neditable webview"]
+    B --> C["3. Generate code\nyour agent, isolated worktree"]
+    C --> D["4. Generate & run tests\none test per constraint"]
+    D -->|fail| E["5. Retry with context\nup to retry budget"]
+    E --> C
+    D -->|pass| F["6. Score quality\n6 dimensions, independent provider"]
+    F --> G{"7. Gate\nscore ≥ threshold &\nno failing high-severity test?"}
+    G -->|yes| H["✅ Promoted to your workspace"]
+    G -->|no| I["❌ Marked failed\nworktree left for inspection"]
+```
+
+1. **Extract constraints.** Describe what you want in plain English. A
+   reasoning provider extracts discrete, testable constraints and classifies
+   each into an [EARS](#ears-constraints) pattern.
+2. **Review & approve.** Every constraint is shown in a webview — EARS
+   text, type, severity, description — fully editable. Nothing generates
+   until you click **Approve**.
+3. **Generate code.** A coding agent (bring-your-own-agent) writes an
+   implementation inside an isolated git worktree, never touching your real
+   working tree directly.
 4. **Generate & run tests.** One test is generated per constraint, targeting
    whatever framework the target project uses (vitest or pytest, v1), and
-   run inside the same worktree with a per-test timeout.
-5. **Retry with context.** If tests fail, the failures are fed back into the
-   next code-generation attempt, up to a configured retry budget.
+   run in the same worktree with a per-test timeout.
+5. **Retry with context.** Failures feed back into the next code-generation
+   attempt, up to a configured retry budget.
 6. **Score quality.** A scoring provider — which can be a *different*
    provider than the one that generated the code — rates the result across
-   six dimensions (correctness, completeness, type safety, security,
-   maintainability, test coverage) and renders a dashboard.
+   six dimensions and renders a dashboard.
 7. **Gate.** The run only completes, and the worktree is only promoted into
    your real workspace, if the overall score clears the configured
    threshold *and* no high-severity constraint has a failing test.
-   Otherwise it's marked failed and the worktree is left in place for you
-   to inspect.
+   Otherwise it's marked failed and the worktree is left in place to
+   inspect.
 
-## Bring your own agent
+## Features
 
-SpecGuard never talks to a model or agent directly — every call goes
-through a `Provider` interface (`src/providers/provider.ts`). You choose,
-independently, which provider handles each of the four stages:
-
-- constraint extraction
-- code generation
-- test generation
-- scoring
-
-Because the scoring provider is configured separately from the
-code-generation provider, you can generate with one model and score with a
-completely different one (e.g. generate with a large hosted model, score
-with a small local one) so the quality check isn't just the same model
-grading its own homework. Turn on
-`specguard.scoring.enforceDifferentProvider` to make SpecGuard warn (and let
-you block) a run where they're the same.
-
-SpecGuard ships with:
-
-- **`fake`** — a deterministic, canned provider with no network calls. It's
-  what every test in this codebase runs against, and it also works as a
-  zero-config demo: with all four stages set to `fake` (the default),
-  running the pipeline produces a real, working, gate-passing example end
-  to end.
-- **`claude-agent-sdk`** — backed by the
-  [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk)
-  in headless/programmatic mode. For code generation it runs the SDK with
-  its working directory pinned to the isolated worktree, so the agent's
-  file writes never land anywhere else. Authentication is read from the
-  environment (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`) or the
-  Claude CLI's own login — never from a VSCode setting, so a secret never
-  ends up in `settings.json`.
+| | |
+|---|---|
+| 🧩 **Spec → EARS constraints** | Plain-English descriptions become discrete, testable, typed requirements. |
+| ✅ **Human-in-the-loop approval** | Nothing is generated until you review and approve every constraint. |
+| 🤖 **Bring your own agent** | Every model call goes through a `Provider` interface — plug in whatever generates, tests, or scores. |
+| 🌳 **Isolated git worktrees** | Generation and test runs never touch your real working tree until they've earned it. |
+| 🧪 **One test per constraint** | Auto-generated, framework-detected (vitest/pytest), run with a per-test timeout. |
+| 🔁 **Retry with context** | Failing tests feed straight back into the next generation attempt. |
+| 📊 **Independent scoring** | Score with a different model than the one that wrote the code — no grading your own homework. |
+| 🚦 **Configurable quality gate** | Blocks promotion below a score threshold or on any failing high-severity constraint. |
 
 ## EARS constraints
 
@@ -81,38 +92,55 @@ Approach to Requirements Syntax) patterns and formatted accordingly:
 | Unwanted | "If &lt;condition&gt;, then the system shall &lt;response&gt;." |
 | Optional | "Where &lt;feature&gt;, the system shall &lt;response&gt;." |
 
-## Settings reference
+## Bring your own agent
 
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `specguard.providers.constraintExtraction` | string | `"fake"` | Provider id used to extract and classify constraints. |
-| `specguard.providers.codeGeneration` | string | `"fake"` | Provider id used to generate code. |
-| `specguard.providers.testGeneration` | string | `"fake"` | Provider id used to generate tests. |
-| `specguard.providers.scoring` | string | `"fake"` | Provider id used to score quality. |
-| `specguard.scoring.enforceDifferentProvider` | boolean | `false` | Warn/block when the scoring provider matches the code-generation provider. |
-| `specguard.gate.minScore` | number | `75` | Minimum overall score (0-100) required to pass the gate. |
-| `specguard.testFramework` | `"auto" \| "vitest" \| "pytest"` | `"auto"` | Test framework for generated tests. `"auto"` detects it from the target project. |
-| `specguard.claudeAgentSdk.model` | string | `""` | Model name/alias for the Claude Agent SDK provider. Empty uses the SDK's default. |
+SpecGuard never talks to a model or agent directly — every call goes
+through a `Provider` interface ([`src/providers/provider.ts`](src/providers/provider.ts)).
+You choose, independently, which provider handles each stage:
 
-Built-in provider ids: `fake`, `claude-agent-sdk`.
+- constraint extraction
+- code generation
+- test generation
+- scoring
 
-## Running it
+Because scoring is configured separately from code generation, you can
+generate with one model and score with a completely different one (e.g.
+generate with a large hosted model, score with a small local one). Turn on
+`specguard.scoring.enforceDifferentProvider` to make SpecGuard warn — and
+let you block — a run where they're the same.
 
-### From source (F5)
+SpecGuard ships with:
+
+- **`fake`** — a deterministic, canned provider with no network calls. Every
+  test in this codebase runs against it, and it also works as a zero-config
+  demo: with all four stages set to `fake` (the default), the pipeline runs
+  end to end and passes the gate with no API key required.
+- **`claude-agent-sdk`** — backed by the
+  [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk)
+  in headless/programmatic mode. For code generation it runs with its
+  working directory pinned to the isolated worktree, so file writes never
+  land anywhere else. Auth is read from the environment
+  (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`) or the Claude CLI's
+  own login — never from a VSCode setting, so a secret never ends up in
+  `settings.json`.
+
+## Quick start
+
+### Try it now (from source)
 
 ```bash
 npm install
 npm run compile
 ```
 
-Then press **F5** in VSCode (or Run → Start Debugging) — this compiles and
-opens an Extension Development Host with SpecGuard loaded. Open a folder in
-that window, run **"SpecGuard: Run Pipeline"** from the Command Palette, and
+Press **F5** in VSCode (or Run → Start Debugging) to compile and open an
+Extension Development Host with SpecGuard loaded. In that window, open a
+folder, run **`SpecGuard: Run Pipeline`** from the Command Palette, and
 answer the three prompts (title, description, spec). With the default
 `fake` provider on every stage, no network access or API key is required —
 the pipeline runs end to end against canned, deterministic output.
 
-### Installing the packaged extension
+### Install the packaged extension
 
 ```bash
 npm run package
@@ -124,9 +152,42 @@ produces `specguard-<version>.vsix`. Install it into any VSCode with:
 code --install-extension specguard-<version>.vsix
 ```
 
+### Use real generation
+
+Point any stage at `claude-agent-sdk` in your VSCode settings:
+
+```json
+{
+  "specguard.providers.codeGeneration": "claude-agent-sdk",
+  "specguard.providers.testGeneration": "claude-agent-sdk"
+}
+```
+
+Authenticate via `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, or the
+Claude CLI's own login.
+
+## Settings reference
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `specguard.providers.constraintExtraction` | string | `"fake"` | Provider id used to extract and classify constraints. |
+| `specguard.providers.codeGeneration` | string | `"fake"` | Provider id used to generate code. |
+| `specguard.providers.testGeneration` | string | `"fake"` | Provider id used to generate tests. |
+| `specguard.providers.scoring` | string | `"fake"` | Provider id used to score quality. |
+| `specguard.scoring.enforceDifferentProvider` | boolean | `false` | Warn/block when the scoring provider matches the code-generation provider. |
+| `specguard.gate.minScore` | number | `75` | Minimum overall score (0–100) required to pass the quality gate. |
+| `specguard.testFramework` | `"auto" \| "vitest" \| "pytest"` | `"auto"` | Test framework for generated tests. `"auto"` detects it from the target project. |
+| `specguard.claudeAgentSdk.model` | string | `""` | Model name/alias for the Claude Agent SDK provider. Empty uses the SDK's default. |
+
+Built-in provider ids: `fake`, `claude-agent-sdk`.
+
 ## Deferred to v2
 
 Agent-to-agent handoff, team/shared workspaces, a GitHub PR gate as a CI
 Action, spec drift detection, Living Rules, coverage % display, parallel
 multi-feature worktrees, and additional providers (Cursor/Copilot/Windsurf)
 are explicitly out of scope for this build.
+
+## License
+
+[Apache-2.0](LICENSE)
